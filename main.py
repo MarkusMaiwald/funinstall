@@ -2,6 +2,7 @@ import re
 import os
 import urllib.request
 import subprocess
+import tarfile
 # Exceptions
 class WrongArch(Exception):
     pass
@@ -16,12 +17,14 @@ class Arch():
 
     def check(self):
         try:
-            self.arches = input("What's your arch? (x86_64 or x86): ")
+            self.arches = input("What's your arch? (x86-64bit or x86-32bit): ")
             # checking if choice the user wrote x86..
-            if not "x86" ==  self.arches:
+            if not "x86-32bit" ==  self.arches:
                 # checking if the user wrote x86_64..
-                if not "x86_64" == self.arches:
+                if not "x86-64bit" == self.arches:
                     raise WrongArch
+
+            return(self.arches)
 
         except WrongArch:
             print("You chose the wrong arch")
@@ -55,12 +58,30 @@ class Partition():
         subprocess.call("fdisk -l", shell=True)
         input("Now open a seperate terminal and go mount your root parition on /mnt/gentoo and any other partition\nPress enter here when you are done. ")
         print("At this point, all your parition should be mounted at the appropriate mountpoint")
-        
-        
-                    
-            
-            
-        
-        
 
-Partition().mount()
+
+class Stage(Arch):
+            
+    def get(self):
+        self.arches = Arch().check()
+        if self.arches == "x86-32bit":
+            arches_list = ["amd64-k8_32", "athlon-xp", "atom_32", "core2_32", "generic_32", "i686", "pentium4"]
+        if self.arches == "x86-64bit":
+            arches_list = ["amd64-k8", "amd64-k10", "atom_64", "core2_64", "corei7", "generic64"]
+        number = 0
+        for stage3 in arches_list:
+            print(number,"-", stage3)
+            number = number + 1
+
+        self.optimi_number = input("Enter your choice (just input the number): ")
+        self.arches_list = arches_list
+        print(self.arches, self.arches_list[int(self.optimi_number)])
+        try:
+            urllib.request.urlretrieve("http://ftp.osuosl.org/pub/funtoo/funtoo-current/{0}/{1}/stage3-latest.tar.xz".format(self.arches, self.arches_list[int(self.optimi_number)]), filename="/mnt/gentoo/stage3-latest.tar.xz")
+        except PermissionError:
+            print("Are you root?")
+
+
+    def extract(self, path="/mnt/gentoo/stage3-latest.tar.bz2"):
+        stage3 = tarfile.open(name=path, mode='r|*')
+        stage3.extractall(path="/mnt/gentoo")
