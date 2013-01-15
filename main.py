@@ -2,13 +2,37 @@ import re
 import os
 import urllib.request
 import subprocess
+import shutil
 import tarfile
+
+# colors
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    
+    def disable(self):
+        self.HEADER = ''
+        self.OKBLUE = ''
+        self.OKGREEN = ''
+        self.WARNING = ''
+        self.FAIL = ''
+        self.ENDC = ''
+
 # Exceptions
 class WrongArch(Exception):
     pass
 
 # Welcome
-print("Welcome to my highly experimental Gentoo/Funtoo installation program.\nI'll ask you a couple of questions now.")
+print("-")
+print("Welcome to my highly experimental Gentoo/Funtoo installation program")
+print("-")
+
+# Check distro
+
 
 # Arch check
 class Arch():
@@ -49,6 +73,20 @@ class Partition():
     def __init__(self):
         pass
 
+    def format(self):
+        if "yes" == input("Do you want me to format partition for you?"):
+            while True:
+                subprocess.call(["fdisk", "-l"])
+                partition = input("Please enter the partition that you want to format (in the form '/dev/xxx': ")
+                filesystem = input("Please enter the filesystem that you want to use on the previous partition (ext2, ext3 or ext4): ")
+                print("I'll format {0} with the {1} filesystem".format(partition, filesystem))
+                if "yes" == input(bcolors.WARNING + "Are you sure you want to do this? (yes or no): " + bcolors.ENDC):
+                    subprocess.call("mkfs.{0} {1}".format(filesystem, partition), shell=True)
+
+                if "no" == input("Do you want to format another partition? (yes or no): "):
+                    break
+        
+
     def check(self):
         if not os.access("/mnt/gentoo", os.F_OK):
             os.mkdir("/mnt/gentoo")
@@ -83,7 +121,7 @@ class Stage():
             print("Are you root?")
 
 
-    def extract(self, path="/mnt/gentoo/stage3-latest.tar.bz2"):
+    def extract(self, path="/mnt/gentoo/stage3-latest.tar.xz"):
         stage3 = tarfile.open(name=path, mode='r|*')
         stage3.extractall(path="/mnt/gentoo")
 
@@ -92,55 +130,72 @@ class Tree():
         subprocess.call("emerge --sync", shell=True)
 
 class pre_chroot():
-    def proc():
+    def proc(self):
         subprocess.call("mount --bind /proc /mnt/gentoo/proc", shell=True)
 
-    def dev():
+    def dev(self):
         subprocess.call("mount --bind /dev /mnt/gentoo/dev", shell=True)
 
 
 # Funtoo
 class Configure():
-    def fstab():
+    def mtab(self):
+        subprocess.call("grep -v rootfs /proc/mounts > /etc/mtab", shell=True)
+    def fstab(self):
         subprocess.call("nano /etc/fstab", shell=True)
 
-    def localtime():
+    def localtime(self):
         subprocess.call("nano /etc/localtime", shell=True)
 
-    def portage():
+    def portage(self):
         subprocess.call("nano /etc/make.conf", shell=True)
+        subprocess.call("emerge --sync", shell=True)
 
-    def keymaps():
+    def keymaps(self):
         subprocess.call("nano /etc/conf.d/keymaps", shell=True)
 
-    def clock():
+    def clock(self):
         subprocess.call("nano /etc/conf.d/hwclock", shell=True)
 
-    def root_passwd():
+    def root_passwd(self):
         print("Configuring root password")
         subprocess.call("passwd root", shell=True)
+    def keep_internet(self):
+        shutil.copy2("/etc/resolv.conf", "/mnt/gentoo/etc/resolv.conf")
+        
 
-    def bootloader():
-        asw = input("Do you want to emerge boot-update? (yes or no): ")
+    def bootloader(self):
+        asw = input("Here's a quick description of what boot-update is:\n-\nboot-update provides a unified mechanism for configuring the GRUB 1.9x (sys-boot/grub) and GRUB 0.97 (sys-boot/grub-legacy) boot loaders.\n-\nDo you want to install it? (yes or no): ")
         if "yes" == asw:
             subprocess.call("emerge boot-update", shell=True)
 
-    def kernel():
-        print("I'll build the debian-sources kernel with the binary useflag for you")
-        print("Doing this requires 12GB of space in /var/tmp")
-        subprocess.call("df -h /var/tmp", shell=True)
-        input("Do you have enough place? If you have, just press enter. If you don't, exit the script with CTRL-C and deal with the kernel yourself!")
-        packageuse = open("/etc/portage/package.use", "a")
-        packageuse.write("# The following line was added by funinstall")
-        packageuse.write("sys-kernel/debian-sources binary")
+        if "yes" == input("Do you want to install grub? (yes or no): "):
+            subprocess.call(["emerge", "grub"])
+
         
+
+    def kernel(self):
+        # print("I'll build the debian-sources kernel with the binary useflag for you")
+        # print("Doing this requires 12GB of space in /var/tmp")
+        packageuse = open("/etc/portage/package.use", "a")
+        ## Right now Mon Jan 14 2013 genkernel fail with debian-sources +binary
+        ## So i'll use gentoo-sources instead :)
+        # packageuse.write("# The following line was added by funinstall")
+        # packageuse.write("\nsys-kernel/debian-sources binary")
+        packageuse.write("# The following line was added by funinstall")
+        packageuse.write("\nsys-kernel/gentoo-sources symlink")
+        subprocess.call(["emerge", "gentoo-sources"])
+        print(bcolors.WARNING + "Only the sources of the kernel is installed. You have to go where the sources are (typically /usr/src/linux) and configure the kernel to your needs (typically with make menuconfig).\nThen, you have to copy the kernel images to your boot parition and edit your bootloader so it will find it." + bcolors.ENDC)
+    
             
-Partition().check()            
-Partition().mount()
-Stage().get()
-Stage().extract()
-pre_chroot().proc()
-pre_chroot().dev()
-os.chroot("/mnt/gentoo")
-Configure().fstab()
-Configure().portage()
+#Partition().check()            
+Partition().format()
+#Stage().extract()
+#pre_chroot().proc()
+#pre_chroot().dev()
+#Configure().keep_internet()
+#os.chroot("/mnt/gentoo")
+#Configure().fstab()
+#Configure().portage()
+Configure().bootloader()
+#Configure().kernel()
