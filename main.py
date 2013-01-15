@@ -4,7 +4,9 @@ import urllib.request
 import subprocess
 import shutil
 import tarfile
-
+import curses
+import argparse
+import curses.textpad
 # colors
 class bcolors:
     HEADER = '\033[95m'
@@ -27,9 +29,6 @@ class WrongArch(Exception):
     pass
 
 # Welcome
-print("-")
-print("Welcome to my highly experimental Gentoo/Funtoo installation program")
-print("-")
 
 # Check distro
 
@@ -39,7 +38,7 @@ class Arch():
     def __init__(self):
         pass
 
-    def check(self):
+    def check_funtoo(self):
         try:
             self.arches = input("What's your arch? (x86-64bit or x86-32bit): ")
             # checking if choice the user wrote x86..
@@ -53,6 +52,17 @@ class Arch():
         except WrongArch:
             print("You chose the wrong arch")
 
+    def check_gentoo(self):
+        try:
+            self.arches = input("What's your arch? (x86 or amd64): ")
+            # checking if the user choosed x86...
+            if not "x86" == self.arches:
+                if not "amd64" == self.arches:
+                    raise WrongArch
+            return(self.arches)
+        
+        except WrongArch:
+            print("You chose the wrong arch")
 
 class Net():
     def __init__(self):
@@ -60,7 +70,7 @@ class Net():
 
     def activate(self):
         print("If you are on a wired network, I can run dhcpcd for you on eth0 or any devices")
-        net_device = input("Please enter the network interface (enter no if you want to skip this part) : ")
+        net_device = input("Please enter the network interface (enter no if you want to skip this part): ")
         if not net_device == "no":
             try:
                 subprocess.check_call("dhcpcd {0}".format(net_device), shell=True)
@@ -100,7 +110,10 @@ class Partition():
 
 class Stage():
             
-    def get(self):
+    def get_funtoo(self, url="http://ftp.osuosl.org/pub/funtoo/funtoo-current/{0}/{1}/stage3-latest.tar.xz"):
+        # get the base name of the archive
+        basename = os.path.basename(url)
+        
         self.arches = Arch().check()
         if self.arches == "x86-32bit":
             arches_list = ["amd64-k8_32", "athlon-xp", "atom_32", "core2_32", "generic_32", "i686", "pentium4"]
@@ -116,9 +129,28 @@ class Stage():
         print(self.arches, self.arches_list[int(self.optimi_number)])
         try:
             print("Downloaded of the stage3 archive started...")
-            urllib.request.urlretrieve("http://ftp.osuosl.org/pub/funtoo/funtoo-current/{0}/{1}/stage3-latest.tar.xz".format(self.arches, self.arches_list[int(self.optimi_number)]), filename="/mnt/gentoo/stage3-latest.tar.xz")
+            urllib.request.urlretrieve("http://ftp.osuosl.org/pub/funtoo/funtoo-current/{0}/{1}/stage3-latest.tar.xz".format(self.arches, self.arches_list[int(self.optimi_number)]), filename="/mnt/gentoo/{0}".format(basename))
         except PermissionError:
             print("Are you root?")
+
+    def get_gentoo(self):
+        self.arch = Arch().check_gentoo()
+        if "x86" == self.arch:
+            self.arch2 = "i686"
+
+        else:
+            self.arch2 = "amd64"
+
+        base_url = "http://distfiles.gentoo.org/releases/{0}/autobuilds/".format(self.arch)
+        stage3_file = urllib.request.urlopen("http://distfiles.gentoo.org/releases/{0}/autobuilds/latest-stage3-{1}.txt".format(self.arch, self.arch2))
+        stage3_file = stage3_file.readlines()[2]
+        stage3_file = str(stage3_file)
+        stage3_file = stage3_file.replace("\\n", "")
+        stage3_file = stage3_file.replace("'", "")
+        stage3_file = stage3_file[1:]
+        full_stage3_url = "{0}{1}".format(base_url, stage3_file)
+        print(full_stage3_url)
+        
 
 
     def extract(self, path="/mnt/gentoo/stage3-latest.tar.xz"):
@@ -176,7 +208,7 @@ class Configure():
 
     def kernel(self):
         # print("I'll build the debian-sources kernel with the binary useflag for you")
-        # print("Doing this requires 12GB of space in /var/tmp")
+        # print("Doing this requires 12GB of space ind /var/tmp")
         packageuse = open("/etc/portage/package.use", "a")
         ## Right now Mon Jan 14 2013 genkernel fail with debian-sources +binary
         ## So i'll use gentoo-sources instead :)
@@ -185,11 +217,19 @@ class Configure():
         packageuse.write("# The following line was added by funinstall")
         packageuse.write("\nsys-kernel/gentoo-sources symlink")
         subprocess.call(["emerge", "gentoo-sources"])
-        print(bcolors.WARNING + "Only the sources of the kernel is installed. You have to go where the sources are (typically /usr/src/linux) and configure the kernel to your needs (typically with make menuconfig).\nThen, you have to copy the kernel images to your boot parition and edit your bootloader so it will find it." + bcolors.ENDC)
+        print(bcolors.WARNING + "Only the sources of the kernel is installed. You have to go where the sources are (typically /usr/src/linux) and configure the kernel to your needs (typically with make menuconfig).\nThen, you have to copy the kernel images to your boot parition and edit your bootloader so it will find it." + bcolors.ENDC)        
     
-            
+parser = argparse.ArgumentParser(description='Installing a Gentoo/Funtoo system')
+parser.add_argument("--interactive", action="store_true", help="Installations step by step interactively")
+parser.add_argument("--gentoo", action="store_true", help="If you want to install Gentoo, use this")
+parser.add_argument("--funtoo", action="store_true", help="If you want to install Funtoo, use this")
+args = parser.parse_args()
+
+
+Stage().get_gentoo()
+
 #Partition().check()            
-Partition().format()
+#Partition().format()
 #Stage().extract()
 #pre_chroot().proc()
 #pre_chroot().dev()
@@ -197,5 +237,5 @@ Partition().format()
 #os.chroot("/mnt/gentoo")
 #Configure().fstab()
 #Configure().portage()
-Configure().bootloader()
+#Configure().bootloader()
 #Configure().kernel()
