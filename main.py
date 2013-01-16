@@ -6,8 +6,9 @@ import shutil
 import tarfile
 import curses
 import argparse
-import curses.textpad
+import glob
 # colors
+
 class bcolors:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
@@ -69,44 +70,94 @@ class Net():
         pass
 
     def activate(self):
-        print("If you are on a wired network, I can run dhcpcd for you on eth0 or any devices")
-        net_device = input("Please enter the network interface (enter no if you want to skip this part): ")
+        print("I'll run dhcpcd on the network interface that you want\n")
+        subprocess.call(["ifconfig", "-s"])
+        net_device = input("\nPlease enter the network interface (enter no to cancel): ")
         if not net_device == "no":
             try:
                 subprocess.check_call("dhcpcd {0}".format(net_device), shell=True)
-                print("Running dhcpcd on {0}".format(net_device))
+                print(bcolors.HEADER + "dhcpcd successfully started on {0}".format(net_device) + bcolors.ENDC)
             except:
-                print("You probably choosed a wrong internet device, this is why it just failed!")
+                print("You chose an", bcolors.WARNING + "incorrect internet device" + bcolors.ENDC, "or maybe", bcolors.WARNING + "dhcpcd is already running" + bcolors.ENDC, "on the interface that you specified")
 
 
 class Partition():
     def __init__(self):
         pass
 
-    def format(self):
-        if "yes" == input("Do you want me to format partition for you?"):
-            while True:
-                subprocess.call(["fdisk", "-l"])
-                partition = input("Please enter the partition that you want to format (in the form '/dev/xxx': ")
-                filesystem = input("Please enter the filesystem that you want to use on the previous partition (ext2, ext3 or ext4): ")
-                print("I'll format {0} with the {1} filesystem".format(partition, filesystem))
-                if "yes" == input(bcolors.WARNING + "Are you sure you want to do this? (yes or no): " + bcolors.ENDC):
-                    subprocess.call("mkfs.{0} {1}".format(filesystem, partition), shell=True)
+    def create(self):
+        while True:
+            subprocess.call(["fdisk -l"])
+            c = input("\nOn what device you would like to create partitions? (enter no if you want to cancel - in the form /dev/xxx): ")
+            if c == "no":
+                break
+            try:
+                subprocess.check_call(["cfdisk", c])
 
-                if "no" == input("Do you want to format another partition? (yes or no): "):
+                p = input("\n Do you want to create partitions on other hard drive? (yes or no)")
+                if p == "no":
                     break
+
+            except:
+                print("Cfdisk failed to work on {0}".format(c))
+                
+            
+                      
+        
+            
+                            
+        
+                        
+
+    def swap(self):
+        subprocess.call(["fdisk", "-l"])
+        swap_partition = input("\nPleaser enter the partition that you would like to format to swap (enter no if you want to cancel): ")
+        while True:
+            if "no" == swap_partition:
+                break
+            
+            try:
+                subprocess.check_call(["mkswap", swap_partition])
+                break
+            except:
+                print("Mkswap failed on {0}".format(swap_partition))
+
+    def format(self):
+        while True:
+            subprocess.call(["fdisk", "-l"])
+            partition = input("Please enter the partition that you to format (in the form '/dev/xxx': ")
+            filesystem = input("Please enter the filesystem that you want to use on the previous partition (enter no to cancel - ext2, ext3 or ext4): ")
+            if "no" == filesystem:
+                break
+            print("I'll format {0} with the {1} filesystem\n".format(partition, filesystem))
+            if "yes" == input(bcolors.WARNING + "Are you sure you want to do this? (yes or no): " + bcolors.ENDC):
+                try:
+                    subprocess.check_call("mkfs.{0} {1}".format(filesystem, partition), shell=True)
+                except:
+                    print("The formatting of {0} with the {1} filesystem failed.".format(partition,filesystem))
+                
+            if "no" == input("Do you want to format another partition? (yes or no): "):
+                break
         
 
     def check(self):
         if not os.access("/mnt/gentoo", os.F_OK):
             os.mkdir("/mnt/gentoo")
-            print("Mount point /mnt/gentoo created")
 
     def mount(self):
-        subprocess.call("fdisk -l", shell=True)
-        input("Now open a seperate terminal and go mount your root parition on /mnt/gentoo and any other partition\nPress enter here when you are done. ")
-        print("At this point, all your parition should be mounted at the appropriate mountpoint")
-
+        subprocess.call(["fdisk", "-l"])
+        c = input("\nEnter here the partition that you want to mount at /mnt/gentoo  (typically your root partition, in the form /dev/xxx): ")
+        try:
+            subprocess.call(["mount", c, "/mnt/gentoo"])
+            while True:
+                c = input("Enter here any other partition that you would like to mount (in the form /dev/xxx -- enter no if you don't have others partition too mount): ")
+                if c == "no":
+                    break
+                d = input("Enter the mount point of this partition (inside /mnt/gentoo. Ex: /mnt/gentoo/home): ")
+                subprocess.check_call(["mount", c, d])
+        except:
+            print("Incorrect mount point or partition specified")
+        
 
 class Stage():
             
@@ -128,8 +179,8 @@ class Stage():
         self.arches_list = arches_list
         print(self.arches, self.arches_list[int(self.optimi_number)])
         try:
-            print("Downloaded of the stage3 archive started...")
-            urllib.request.urlretrieve("http://ftp.osuosl.org/pub/funtoo/funtoo-current/{0}/{1}/stage3-latest.tar.xz".format(self.arches, self.arches_list[int(self.optimi_number)]), filename="/mnt/gentoo/{0}".format(basename))
+            print("Downloading of the stage3 archive started...")
+            urllib.request.urlretrieve("http://ftp.osuosl.org/pub/funtoo/funtoo-current/{0}/{1}/stage3-latest.tar.xz".format(self.arches, self.arches_list[int(self.optimi_number)]), filename="/mnt/gentoo/{0}".format(self.basename))
         except PermissionError:
             print("Are you root?")
 
@@ -149,11 +200,22 @@ class Stage():
         stage3_file = stage3_file.replace("'", "")
         stage3_file = stage3_file[1:]
         full_stage3_url = "{0}{1}".format(base_url, stage3_file)
-        print(full_stage3_url)
+        # catch the name of the archive
+        self.basename = os.path.basename("full_stage3_url")
+        try:
+            print("Downloading of the stage3 archive started...")
+            urllib.request.urlretrieve(full_stage3_url, filename="/mnt/gentoo/{0}".format(self.basename))
+        except:
+            print ("Unexpected Error")
         
 
 
-    def extract(self, path="/mnt/gentoo/stage3-latest.tar.xz"):
+    def catch_stage3_name(self):
+        return(glob.glob("/mnt/gentoo/stage3*")[0])
+    
+
+            
+    def extract(self, path=Stage().catch_stage3_name()):
         stage3 = tarfile.open(name=path, mode='r|*')
         stage3.extractall(path="/mnt/gentoo")
 
@@ -181,7 +243,6 @@ class Configure():
 
     def portage(self):
         subprocess.call("nano /etc/make.conf", shell=True)
-        subprocess.call("emerge --sync", shell=True)
 
     def keymaps(self):
         subprocess.call("nano /etc/conf.d/keymaps", shell=True)
@@ -220,14 +281,81 @@ class Configure():
         print(bcolors.WARNING + "Only the sources of the kernel is installed. You have to go where the sources are (typically /usr/src/linux) and configure the kernel to your needs (typically with make menuconfig).\nThen, you have to copy the kernel images to your boot parition and edit your bootloader so it will find it." + bcolors.ENDC)        
     
 parser = argparse.ArgumentParser(description='Installing a Gentoo/Funtoo system')
-parser.add_argument("--interactive", action="store_true", help="Installations step by step interactively")
-parser.add_argument("--gentoo", action="store_true", help="If you want to install Gentoo, use this")
-parser.add_argument("--funtoo", action="store_true", help="If you want to install Funtoo, use this")
+parser.add_argument("--config", action="store_true", help="Configure the needed file for your installation")
+parser.add_argument("--partition", action="store_true", help="Configure partitions and mounts points")
+parser.add_argument("--net", action="store_true", help="Activate the network if on a wired connection")
+parser.add_argument("--getgentoo", action="store_true", help="Fetch the stage3 archive for Gentoo and save it in /mnt/gentoo")
+parser.add_argument("--getfuntoo", action="store_true", help="Fetch the stage3 archive for Funtoo and save it in /mnt/gentoo")
+parser.add_argument("--create-tree", action="store_true", help="Create an initial portage tree for your installation")
+parser.add_argument("--full", action="store_true", help="Walk trough each step automatically")
 args = parser.parse_args()
 
 
-Stage().get_gentoo()
+if args.config:
+    pre_chroot().proc()
+    pre_chroot().dev()
+    os.chroot("/mnt/gentoo")
+    Configure().mtab()
+    COnfigure().fstab()
+    Configure().localtime()
+    Configure().portage()
+    Configure().keymaps()
+    Configure().clock()
+    Tree().get()
 
+if args.partition:
+    Partition().check()
+    Partition().format()
+    Partition().format()
+
+if args.getfuntoo:
+    Stage().get_funtoo()
+    Stage().extract()
+    
+if args.getgentoo:
+    Stage().get_gentoo
+    Stage().extract()
+                    
+if args.net:
+    Net().activate()
+
+if args.full:
+    Net().activate()
+
+    Partition().create()
+    Partition().check()
+    Partition().swap()
+    Partition().format()
+    Partition().mount()
+    
+    c = input("\nAre you installing funtoo or gentoo?")
+    if c == "gentoo":
+        Stage().get_gentoo()
+
+    elif c == "funtoo":
+        Stage().get_funtoo()
+
+    else:
+        print("Sorry, can't understand your answer")
+
+    Stage().extract()
+
+    pre_chroot().proc()
+    pre_chroot().dev()
+
+    Configure().keep_internet()
+
+    os.chroot("/mnt/gentoo")
+    Configure().mtab()
+    Configure().fstab()
+    Configure().localtime()
+    Configure().portage()
+    Configure().keymaps()
+    Configure().clock()
+    Configure().root_passwd()
+    Tree().get()
+
+#Stage().get_gentoo()
 #Partition().check()            
 #Partition().format()
 #Stage().extract()
